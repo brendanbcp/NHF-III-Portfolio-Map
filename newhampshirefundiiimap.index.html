@@ -18,11 +18,7 @@
     }
     #sidebar h2 { margin-top: 0; color: #022f40; }
     #sidebar ul { list-style: none; padding: 0; }
-    #sidebar li {
-      margin: 8px 0;
-      cursor: pointer;
-      color: #022f40;
-    }
+    #sidebar li { margin: 8px 0; cursor: pointer; color: #022f40; }
     #sidebar li:hover { text-decoration: underline; }
     #map { flex: 1; height: 100%; }
   </style>
@@ -30,39 +26,32 @@
 <body>
   <div id="sidebar">
     <h2>Portfolio Properties</h2>
-    <ul>
-      <li onclick="focusMarker(1)">1) 39 Ashland Street, Manchester, NH</li>
-      <li onclick="focusMarker(2)">2) 108 & 112 Church Street, Laconia, NH</li>
-    </ul>
+    <ul></ul>
   </div>
-
   <div id="map"></div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Predefined coordinates and individual addresses
-    const markers = {
-      1: {
-        coords: [[42.9943, -71.4639]],
-        addresses: ["39 Ashland Street, Manchester, NH"]
-      },
-      2: {
-        coords: [[43.5349, -71.4647], [43.5353, -71.4639]],
-        addresses: [
-          "108 Church Street, Laconia, NH",
-          "112 Church Street, Laconia, NH"
-        ]
+    // Property list: id 1 = Ashland, id 2 = both Church Street properties
+    const properties = [
+      { id: 1, address: "39 Ashland Street, Manchester, NH" },
+      { id: 2, address: "108 Church Street, Laconia, NH" },
+      { id: 2, address: "112 Church Street, Laconia, NH" }
+    ];
+
+    // Simple Nominatim geocoder
+    async function geocode(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.length) {
+        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
       }
-    };
+      return null;
+    }
 
-    // Initialize map centered on NH
-    const map = L.map('map').setView([43.27, -71.45], 9);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    // SVG pin icon factory
+    // Create custom pin icon
     function createPin() {
       return L.divIcon({
         html: `
@@ -78,32 +67,56 @@
       });
     }
 
-    const pinIcon = createPin();
-    const leafletMarkers = {};
+    async function initMap() {
+      const map = L.map('map').setView([43.27, -71.45], 9);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
 
-    // Add each pin with its specific address tooltip
-    Object.keys(markers).forEach(id => {
-      const entry = markers[id];
-      leafletMarkers[id] = [];
-      entry.coords.forEach((coord, idx) => {
-        const marker = L.marker(coord, { icon: pinIcon }).addTo(map);
-        marker.bindTooltip(entry.addresses[idx], {
-          direction: 'top', offset: [0, -30], opacity: 0.9
-        });
-        leafletMarkers[id].push(marker);
+      const pinIcon = createPin();
+      const markersById = {};
+
+      // Geocode and add markers, using static coords for Ashland
+      for (const prop of properties) {
+        let coords;
+        if (prop.id === 1) {
+          // Static coordinates for precise placement
+          coords = [42.992576, -71.448404];
+        } else {
+          coords = await geocode(prop.address);
+        }
+        if (!coords) continue;
+
+        const marker = L.marker(coords, { icon: pinIcon }).addTo(map)
+          .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
+
+        // Group markers by ID
+        if (!markersById[prop.id]) markersById[prop.id] = [];
+        markersById[prop.id].push(marker);
+      }
+
+      // Build sidebar entries
+      const sidebarList = document.querySelector('#sidebar ul');
+      const uniqueIds = [...new Set(properties.map(p => p.id))];
+      uniqueIds.forEach(id => {
+        const li = document.createElement('li');
+        if (id === 1) {
+          li.textContent = `1) 39 Ashland Street, Manchester, NH`;
+        } else if (id === 2) {
+          li.textContent = `2) 108 & 112 Church Street, Laconia, NH`;
+        }
+        li.onclick = () => {
+          const group = markersById[id];
+          const lat = group.reduce((sum, m) => sum + m.getLatLng().lat, 0) / group.length;
+          const lon = group.reduce((sum, m) => sum + m.getLatLng().lng, 0) / group.length;
+          map.setView([lat, lon], 15);
+          group.forEach(m => m.openTooltip());
+        };
+        sidebarList.appendChild(li);
       });
-    });
-
-    // Focus and show tooltips for a group
-    function focusMarker(id) {
-      const entry = markers[id];
-      // Compute average center for group
-      const latSum = entry.coords.reduce((sum, c) => sum + c[0], 0);
-      const lonSum = entry.coords.reduce((sum, c) => sum + c[1], 0);
-      const center = [latSum / entry.coords.length, lonSum / entry.coords.length];
-      map.setView(center, 15);
-      leafletMarkers[id].forEach(m => m.openTooltip());
     }
+
+    window.onload = initMap;
   </script>
 </body>
 </html>
