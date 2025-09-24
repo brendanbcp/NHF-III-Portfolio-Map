@@ -1,24 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Interactive Fund III Portfolio Map</title>
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
     body { display: flex; font-family: Arial, sans-serif; }
     #sidebar {
-      width: 260px;
+      width: 240px;
       background: #f3f2f1;
       padding: 16px;
       box-shadow: 2px 0 5px rgba(0,0,0,0.1);
       overflow-y: auto;
     }
-    #sidebar h2 { margin-top: 0; color: #022f40; font-size: 18px; }
-    #sidebar ul { list-style: none; padding: 0; margin: 0; }
-    #sidebar li { margin: 10px 0; cursor: pointer; color: #022f40; line-height: 1.3; }
+    #sidebar h2 { margin-top: 0; color: #022f40; }
+    #sidebar ul { list-style: none; padding: 0; }
+    #sidebar li { margin: 8px 0; cursor: pointer; color: #022f40; }
     #sidebar li:hover { text-decoration: underline; }
     #map { flex: 1; height: 100%; }
   </style>
@@ -30,89 +29,51 @@
   </div>
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // ===== Data =====
-    // Use groupId to group multiple addresses under one sidebar entry.
-    // groupLabel is what shows in the sidebar for that group.
+    // Property groups
     const properties = [
-      // Group 1: Ashland (static coords for precision)
-      {
-        groupId: 1,
-        address: "39 Ashland Street, Manchester, NH",
-        coords: [42.992576, -71.448404],
-        groupLabel: "39 Ashland Street, Manchester, NH"
-      },
+      { id: 1, address: "39 Ashland Street, Manchester, NH" },
+      { id: 2, address: "108 Church Street, Laconia, NH" },
+      { id: 2, address: "112 Church Street, Laconia, NH" },
 
-      // Group 2: Church Street (two addresses, one entry)
-      {
-        groupId: 2,
-        address: "108 Church Street, Laconia, NH",
-        groupLabel: "108 & 112 Church Street, Laconia, NH"
-      },
-      {
-        groupId: 2,
-        address: "112 Church Street, Laconia, NH",
-        groupLabel: "108 & 112 Church Street, Laconia, NH"
-      },
+      // The 3-Pack (grouped)
+      { id: 3, address: "447 Manchester St, Manchester, NH" },
+      { id: 3, address: "457 Merrimack St, Manchester, NH" },
+      { id: 3, address: "604 Harvard St, Manchester, NH" },
 
-      // === New additions ===
-      // 3) 125 N Main St, Rochester, NH
-      {
-        groupId: 3,
-        address: "125 N Main St, Rochester, NH 03867",
-        groupLabel: "125 N Main St, Rochester, NH"
-      },
-
-      // 4) Pagewood Oval, Litchfield, NH
-      {
-        groupId: 4,
-        address: "Pagewood Oval, Litchfield, NH 03052",
-        groupLabel: "Pagewood Oval, Litchfield, NH"
-      },
-
-      // 5) 16 Avon St, Manchester, NH
-      {
-        groupId: 5,
-        address: "16 Avon St, Manchester, NH 03102",
-        groupLabel: "16 Avon St, Manchester, NH"
-      },
-
-      // 6) Grouped: 447 Manchester St, 457 Merrimack St, 604 Harvard St (all Manchester)
-      {
-        groupId: 6,
-        address: "447 Manchester St, Manchester, NH",
-        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
-      },
-      {
-        groupId: 6,
-        address: "457 Merrimack St, Manchester, NH",
-        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
-      },
-      {
-        groupId: 6,
-        address: "604 Harvard St, Manchester, NH",
-        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
-      }
+      // Singles
+      { id: 4, address: "125 N Main St, Rochester, NH 03867" },
+      { id: 5, address: "Pagewood Oval, Litchfield, NH 03052" },
+      { id: 6, address: "16 Avon St, Manchester, NH 03102" }
     ];
 
-    // ===== Geocoder =====
+    // Sidebar labels by group
+    function labelForGroup(id) {
+      if (id === 1) return "39 Ashland Street, Manchester, NH";
+      if (id === 2) return "108 & 112 Church Street, Laconia, NH";
+      if (id === 3) return "The 3-Pack (Manchester: 447 Manchester, 457 Merrimack, 604 Harvard)";
+      // default = first address in group
+      const groupAddrs = properties.filter(p => p.id === id).map(p => p.address);
+      return groupAddrs[0];
+    }
+
+    // Geocode helper
     async function geocode(query) {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      const res = await fetch(url);
       const data = await res.json();
-      if (Array.isArray(data) && data.length) {
+      if (data && data.length) {
         return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
       }
       return null;
     }
 
-    // ===== Custom Pin =====
+    // Custom pin
     function createPin() {
       return L.divIcon({
         html: `
-          <svg width="30" height="45" viewBox="0 0 512 512" aria-hidden="true">
+          <svg width="30" height="45" viewBox="0 0 512 512">
             <path d="M256 0C167.6 0 96 71.6 96 160c0 139.1 160 352 160 352s160-212.9 160-352C416 71.6 344.4 0 256 0z"
               fill="#00aBe6" stroke="#022f40" stroke-width="20" />
             <circle cx="256" cy="160" r="60" fill="#f3f2f1" />
@@ -124,7 +85,6 @@
       });
     }
 
-    // ===== Init Map =====
     async function initMap() {
       const map = L.map('map').setView([43.27, -71.45], 9);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -132,53 +92,44 @@
       }).addTo(map);
 
       const pinIcon = createPin();
-      const markersByGroup = {};
+      const markersById = {};
 
-      // Geocode and add markers
       for (const prop of properties) {
-        let coords = prop.coords || await geocode(prop.address);
+        let coords;
+        if (prop.id === 1) {
+          coords = [42.992576, -71.448404]; // static for Ashland
+        } else {
+          coords = await geocode(prop.address);
+        }
         if (!coords) continue;
 
-        const marker = L
-          .marker(coords, { icon: pinIcon })
-          .addTo(map)
+        const marker = L.marker(coords, { icon: pinIcon }).addTo(map)
           .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
 
-        if (!markersByGroup[prop.groupId]) markersByGroup[prop.groupId] = [];
-        markersByGroup[prop.groupId].push(marker);
+        if (!markersById[prop.id]) markersById[prop.id] = [];
+        markersById[prop.id].push(marker);
       }
 
-      // Build sidebar
+      // Sidebar
       const sidebarList = document.querySelector('#sidebar ul');
       sidebarList.innerHTML = '';
+      const uniqueIds = [...new Set(properties.map(p => p.id))];
 
-      // Unique groups in ascending groupId order
-      const groups = [...new Set(properties.map(p => p.groupId))].sort((a, b) => a - b);
-
-      groups.forEach((groupId, idx) => {
-        // Use the first property's label for the group
-        const example = properties.find(p => p.groupId === groupId);
-        const label = example?.groupLabel || `Group ${groupId}`;
-
+      uniqueIds.forEach((id, idx) => {
         const li = document.createElement('li');
-        li.textContent = `${idx + 1}) ${label}`;
-
+        li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
         li.onclick = () => {
-          const group = markersByGroup[groupId];
-          if (!group || !group.length) return;
-
+          const group = markersById[id];
+          if (!group) return;
           if (group.length === 1) {
-            const { lat, lng } = group[0].getLatLng();
-            map.setView([lat, lng], 16);
+            map.setView(group[0].getLatLng(), 16);
             group[0].openTooltip();
           } else {
-            // Fit to group bounds if multiple markers
             const fg = L.featureGroup(group);
             map.fitBounds(fg.getBounds().pad(0.25));
             group.forEach(m => m.openTooltip());
           }
         };
-
         sidebarList.appendChild(li);
       });
     }
