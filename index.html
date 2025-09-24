@@ -51,7 +51,7 @@ layout: none
       { id: 1, address: "39 Ashland Street, Manchester, NH" },
       { id: 2, address: "108 Church Street, Laconia, NH" },
       { id: 2, address: "112 Church Street, Laconia, NH" },
-      // The 3-Pack
+      // The 3-Pack (grouped pins; single sidebar label)
       { id: 3, address: "447 Manchester St, Manchester, NH" },
       { id: 3, address: "457 Merrimack St, Manchester, NH" },
       { id: 3, address: "604 Harvard St, Manchester, NH" },
@@ -61,10 +61,11 @@ layout: none
       { id: 6, address: "16 Avon St, Manchester, NH 03102" }
     ];
 
+    // Sidebar labels by group
     function labelForGroup(id) {
       if (id === 1) return "39 Ashland Street, Manchester, NH";
       if (id === 2) return "108 & 112 Church Street, Laconia, NH";
-      if (id === 3) return "The 3-Pack (Manchester: 447 Manchester, 457 Merrimack, 604 Harvard)";
+      if (id === 3) return "The 3-Pack"; // <-- updated per your request
       const addrs = properties.filter(p => p.id === id).map(p => p.address);
       return addrs[0] || `Group ${id}`;
     }
@@ -88,6 +89,7 @@ layout: none
       return null;
     }
 
+    // Custom pin
     function createPin() {
       return L.divIcon({
         html: `
@@ -130,27 +132,31 @@ layout: none
       });
 
       // Sidebar
-      const sidebarList = document.querySelector('#sidebar ul');
-      sidebarList.innerHTML = '';
-      const uniqueIds = [...new Set(properties.map(p => p.id))];
-      uniqueIds.forEach((id, idx) => {
-        if (!markersById[id] || markersById[id].length === 0) return; // hide empty groups
-        const li = document.createElement('li');
-        li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
-        li.onclick = () => {
-          const group = markersById[id];
-          if (group.length === 1) {
-            const { lat, lng } = group[0].getLatLng();
-            map.setView([lat, lng], 16);
-            group[0].openTooltip();
-          } else {
-            const fg = L.featureGroup(group);
-            map.fitBounds(fg.getBounds().pad(0.25));
-            group.forEach(m => m.openTooltip());
-          }
-        };
-        sidebarList.appendChild(li);
-      });
+const sidebarList = document.querySelector('#sidebar ul');
+sidebarList.innerHTML = '';
+let uniqueIds = [...new Set(properties.map(p => p.id))];
+
+// Move id=3 ("The 3-Pack") to the end
+uniqueIds = uniqueIds.filter(id => id !== 3).concat(3);
+
+uniqueIds.forEach((id, idx) => {
+  if (!markersById[id] || markersById[id].length === 0) return;
+  const li = document.createElement('li');
+  li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
+  li.onclick = () => {
+    const group = markersById[id];
+    if (group.length === 1) {
+      const { lat, lng } = group[0].getLatLng();
+      map.setView([lat, lng], 16);
+      group[0].openTooltip();
+    } else {
+      const fg = L.featureGroup(group);
+      map.fitBounds(fg.getBounds().pad(0.25));
+      group.forEach(m => m.openTooltip());
+    }
+  };
+  sidebarList.appendChild(li);
+});
     }
 
     window.onload = initMap;
