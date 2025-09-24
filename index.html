@@ -1,79 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Interactive Fund III Portfolio Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
     body { display: flex; font-family: Arial, sans-serif; }
     #sidebar {
-      width: 240px;
+      width: 260px;
       background: #f3f2f1;
       padding: 16px;
       box-shadow: 2px 0 5px rgba(0,0,0,0.1);
       overflow-y: auto;
     }
-    #sidebar h2 { margin-top: 0; color: #022f40; }
-    #sidebar ul { list-style: none; padding: 0; }
-    #sidebar li { margin: 8px 0; cursor: pointer; color: #022f40; }
+    #sidebar h2 { margin-top: 0; color: #022f40; font-size: 18px; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li { margin: 10px 0; cursor: pointer; color: #022f40; line-height: 1.3; }
     #sidebar li:hover { text-decoration: underline; }
     #map { flex: 1; height: 100%; }
+    .muted { color:#666; font-size: 12px; }
   </style>
 </head>
 <body>
   <div id="sidebar">
     <h2>Portfolio Properties</h2>
     <ul></ul>
+    <div class="muted">Tip: if an address can’t be found, it’ll be skipped automatically.</div>
   </div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Property groups
+    // ========= Data =========
+    // Group id 1 = Ashland (static coords)
+    // Group id 2 = 108 & 112 Church, Laconia
+    // Group id 3 = "The 3-Pack" (447 Manchester, 457 Merrimack, 604 Harvard), all Manchester
+    // Singles: id 4 = 125 N Main (Rochester), id 5 = Pagewood Oval (Litchfield), id 6 = 16 Avon (Manchester)
     const properties = [
       { id: 1, address: "39 Ashland Street, Manchester, NH" },
       { id: 2, address: "108 Church Street, Laconia, NH" },
       { id: 2, address: "112 Church Street, Laconia, NH" },
-
-      // The 3-Pack (grouped)
       { id: 3, address: "447 Manchester St, Manchester, NH" },
       { id: 3, address: "457 Merrimack St, Manchester, NH" },
       { id: 3, address: "604 Harvard St, Manchester, NH" },
-
-      // Singles
       { id: 4, address: "125 N Main St, Rochester, NH 03867" },
       { id: 5, address: "Pagewood Oval, Litchfield, NH 03052" },
       { id: 6, address: "16 Avon St, Manchester, NH 03102" }
     ];
 
-    // Sidebar labels by group
-    function labelForGroup(id) {
-      if (id === 1) return "39 Ashland Street, Manchester, NH";
-      if (id === 2) return "108 & 112 Church Street, Laconia, NH";
-      if (id === 3) return "The 3-Pack (Manchester: 447 Manchester, 457 Merrimack, 604 Harvard)";
-      // default = first address in group
-      const groupAddrs = properties.filter(p => p.id === id).map(p => p.address);
-      return groupAddrs[0];
+    // ========= Geocoder (safe) =========
+    function abortableFetch(resource, options = {}) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), options.timeout || 8000);
+      return fetch(resource, { signal: controller.signal }).finally(() => clearTimeout(id));
     }
 
-    // Geocode helper
     async function geocode(query) {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data && data.length) {
-        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`;
+      try {
+        const res = await abortableFetch(url, { timeout: 8000 });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (Array.isArray(data) && data.length) {
+          return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        }
+      } catch (e) {
+        // swallow errors so the app never crashes
       }
       return null;
     }
 
-    // Custom pin
+    // ========= Custom Pin =========
     function createPin() {
       return L.divIcon({
         html: `
-          <svg width="30" height="45" viewBox="0 0 512 512">
+          <svg width="30" height="45" viewBox="0 0 512 512" aria-hidden="true">
             <path d="M256 0C167.6 0 96 71.6 96 160c0 139.1 160 352 160 352s160-212.9 160-352C416 71.6 344.4 0 256 0z"
               fill="#00aBe6" stroke="#022f40" stroke-width="20" />
             <circle cx="256" cy="160" r="60" fill="#f3f2f1" />
@@ -85,6 +88,16 @@
       });
     }
 
+    // ========= Labels =========
+    function labelForGroup(id) {
+      if (id === 1) return "39 Ashland Street, Manchester, NH";
+      if (id === 2) return "108 & 112 Church Street, Laconia, NH";
+      if (id === 3) return "The 3-Pack (Manchester: 447 Manchester, 457 Merrimack, 604 Harvard)";
+      const addrs = properties.filter(p => p.id === id).map(p => p.address);
+      return addrs[0] || `Group ${id}`;
+    }
+
+    // ========= Init =========
     async function initMap() {
       const map = L.map('map').setView([43.27, -71.45], 9);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -94,35 +107,47 @@
       const pinIcon = createPin();
       const markersById = {};
 
-      for (const prop of properties) {
-        let coords;
+      // Pre-compute coords in parallel, with static override for Ashland
+      const tasks = properties.map(async (prop) => {
+        let coords = null;
         if (prop.id === 1) {
-          coords = [42.992576, -71.448404]; // static for Ashland
+          coords = [42.992576, -71.448404]; // static precise placement for Ashland
         } else {
           coords = await geocode(prop.address);
         }
-        if (!coords) continue;
+        return { ...prop, coords };
+      });
 
-        const marker = L.marker(coords, { icon: pinIcon }).addTo(map)
+      const resolved = await Promise.all(tasks);
+
+      // Create markers only for resolved coords
+      resolved.forEach((prop) => {
+        if (!prop.coords) return; // skip silently if geocoding failed
+        const marker = L.marker(prop.coords, { icon: pinIcon }).addTo(map)
           .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
 
         if (!markersById[prop.id]) markersById[prop.id] = [];
         markersById[prop.id].push(marker);
-      }
+      });
 
-      // Sidebar
+      // ===== Sidebar =====
       const sidebarList = document.querySelector('#sidebar ul');
       sidebarList.innerHTML = '';
-      const uniqueIds = [...new Set(properties.map(p => p.id))];
 
+      const uniqueIds = [...new Set(properties.map(p => p.id))];
       uniqueIds.forEach((id, idx) => {
+        // If all markers for a group failed, hide the entry to avoid clicking a dead group
+        if (!markersById[id] || markersById[id].length === 0) return;
+
         const li = document.createElement('li');
         li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
         li.onclick = () => {
           const group = markersById[id];
-          if (!group) return;
+          if (!group || group.length === 0) return;
+
           if (group.length === 1) {
-            map.setView(group[0].getLatLng(), 16);
+            const { lat, lng } = group[0].getLatLng();
+            map.setView([lat, lng], 16);
             group[0].openTooltip();
           } else {
             const fg = L.featureGroup(group);
