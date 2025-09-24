@@ -19,6 +19,7 @@ layout: none
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
   <style>
+    /* Robust, theme-proof layout */
     html, body { margin: 0; padding: 0; }
     #app {
       height: 100vh;
@@ -47,59 +48,61 @@ layout: none
     <div id="sidebar">
       <h2>Portfolio Properties</h2>
       <ul></ul>
-      <div class="muted">Pins use static coords when available. Any missing coords resolve once, cache, and print a snippet in the console.</div>
+      <div class="muted">Pins appear as they load. Results are cached for faster reloads.</div>
     </div>
     <div id="map"></div>
   </div>
 
-  <!-- Leaflet JS -->
+  <!-- Leaflet JS (defer so it doesn't block rendering) -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js" defer></script>
   <script>
-    // ===== Order you like (3-Pack is #6) =====
+    // ===== Data =====
     const properties = [
       { id: 1, address: "39 Ashland Street, Manchester, NH" },
       { id: 2, address: "108 Church Street, Laconia, NH" },
       { id: 2, address: "112 Church Street, Laconia, NH" },
-      { id: 3, address: "125 N Main St, Rochester, NH 03867" },
-      { id: 4, address: "Pagewood Oval, Litchfield, NH 03052" },
-      { id: 5, address: "16 Avon St, Manchester, NH 03102" },
-      // The 3-Pack (group id 6) — three separate pins
-      { id: 6, address: "447 Manchester St, Manchester, NH" },
-      { id: 6, address: "457 Merrimack St, Manchester, NH" },
-      { id: 6, address: "604 Harvard St, Manchester, NH" }
+      // The 3-Pack
+      { id: 3, address: "447 Manchester St, Manchester, NH" },
+      { id: 3, address: "457 Merrimack St, Manchester, NH" },
+      { id: 3, address: "604 Harvard St, Manchester, NH" },
+      // Singles
+      { id: 4, address: "125 N Main St, Rochester, NH 03867" },
+      { id: 5, address: "Pagewood Oval, Litchfield, NH 03052" },
+      { id: 6, address: "16 Avon St, Manchester, NH 03102" }
     ];
 
-    // ===== Sidebar labels by group =====
+    // ===== Labels =====
     function labelForGroup(id) {
       if (id === 1) return "39 Ashland Street, Manchester, NH";
       if (id === 2) return "108 & 112 Church Street, Laconia, NH";
-      if (id === 6) return "The 3-Pack";
+      if (id === 3) return "The 3-Pack"; // ← use short label; change to your longer text if you prefer
       const addrs = properties.filter(p => p.id === id).map(p => p.address);
       return addrs[0] || `Group ${id}`;
     }
 
-    // ===== Static coordinates (fast path) =====
-    // Verified now. Add more here as you lock them in.
-    const STATIC_COORDS = {
-      "39 Ashland Street, Manchester, NH": [42.992576, -71.448404], // precise
-      "447 Manchester St, Manchester, NH": [42.990024, -71.446818], // source: listing data
-      "457 Merrimack St, Manchester, NH": [42.989216, -71.445368]  // source: listing data
-      // "604 Harvard St, Manchester, NH": [lat, lon],
-      // "108 Church Street, Laconia, NH": [lat, lon],
-      // "112 Church Street, Laconia, NH": [lat, lon],
-      // "125 N Main St, Rochester, NH 03867": [lat, lon],
-      // "Pagewood Oval, Litchfield, NH 03052": [lat, lon],
-      // "16 Avon St, Manchester, NH 03102": [lat, lon],
-    };
-
-    // ===== One-time geocode (for anything not in STATIC_COORDS), with caching =====
+    // ===== Geocode with localStorage cache =====
     const GEO_CACHE_KEY = "geocache_v1";
+    const GEO_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
     function loadGeoCache() {
-      try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}"); } catch { return {}; }
+      try {
+        const raw = localStorage.getItem(GEO_CACHE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        const now = Date.now();
+        // prune expired
+        for (const k in parsed) {
+          if (!parsed[k] || !parsed[k].t || (now - parsed[k].t) > GEO_TTL_MS) {
+            delete parsed[k];
+          }
+        }
+        return parsed;
+      } catch { return {}; }
     }
     function saveGeoCache(cache) {
       try { localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(cache)); } catch {}
     }
+
     const geoCache = loadGeoCache();
 
     function abortableFetch(resource, options = {}) {
@@ -109,22 +112,29 @@ layout: none
     }
 
     async function geocode(address) {
-      // 0) Static coords > cache > remote
-      if (STATIC_COORDS[address]) return STATIC_COORDS[address];
-      if (geoCache[address]) return geoCache[address];
+      // 1) cache hit
+      const hit = geoCache[address];
+      if (hit && hit.lat && hit.lon) return [hit.lat, hit.lon];
 
+      // 2) static precise coord for Ashland (fast + accurate)
+      if (address.startsWith("39 Ashland Street")) {
+        const coords = [42.992576, -71.448404];
+        geoCache[address] = { lat: coords[0], lon: coords[1], t: Date.now() };
+        saveGeoCache(geoCache);
+        return coords;
+      }
+
+      // 3) remote lookup
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(address)}`;
       try {
         const res = await abortableFetch(url, { timeout: 6000 });
         if (!res.ok) return null;
         const data = await res.json();
         if (Array.isArray(data) && data.length) {
-          const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-          geoCache[address] = coords;
+          const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
+          geoCache[address] = { lat, lon, t: Date.now() };
           saveGeoCache(geoCache);
-          // print a ready-to-paste line for you to hard-code later
-          console.log(`"${address}": [${coords[0].toFixed(6)}, ${coords[1].toFixed(6)}],`);
-          return coords;
+          return [lat, lon];
         }
       } catch {}
       return null;
@@ -146,7 +156,8 @@ layout: none
     }
 
     function whenLeafletReady(fn) {
-      if (window.L) fn(); else window.addEventListener('load', fn);
+      if (window.L) fn();
+      else window.addEventListener('load', fn);
     }
 
     whenLeafletReady(async function initMap() {
@@ -159,17 +170,17 @@ layout: none
       const markersById = {};
       const sidebarList = document.querySelector('#sidebar ul');
 
-      // Sidebar immediately
+      // Build sidebar immediately (no waiting)
       sidebarList.innerHTML = '';
       const uniqueIds = [...new Set(properties.map(p => p.id))];
       uniqueIds.forEach((id, idx) => {
         const li = document.createElement('li');
         li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
         li.dataset.groupId = String(id);
-        li.style.opacity = 0.6;
+        li.style.opacity = 0.6; // dim until at least one marker is ready
         li.onclick = () => {
           const group = markersById[id] || [];
-          if (!group.length) return;
+          if (!group.length) return; // not loaded yet
           if (group.length === 1) {
             const { lat, lng } = group[0].getLatLng();
             map.setView([lat, lng], 16);
@@ -183,17 +194,19 @@ layout: none
         sidebarList.appendChild(li);
       });
 
-      // Add pins (static = instant; others resolve once and cache)
+      // Kick off geocoding in parallel; add pins as they finish (no Promise.all wait)
       properties.forEach(async (prop) => {
         const coords = await geocode(prop.address);
         if (!coords) return;
+
         const marker = L.marker(coords, { icon: pinIcon })
           .addTo(map)
           .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
 
-        (markersById[prop.id] ||= []).push(marker);
+        if (!markersById[prop.id]) markersById[prop.id] = [];
+        markersById[prop.id].push(marker);
 
-        // Undim sidebar entry when first marker for group lands
+        // Undim the sidebar entry for this group as soon as first marker lands
         const li = sidebarList.querySelector(`li[data-group-id="${prop.id}"]`);
         if (li) li.style.opacity = 1;
       });
