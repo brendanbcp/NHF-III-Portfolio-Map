@@ -46,34 +46,25 @@ layout: none
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // ===== Data (ids updated per your request) =====
-    // 1 = Ashland (static coords)
-    // 2 = 108 & 112 Church, Laconia
-    // 3 = 125 N Main, Rochester (was 4)
-    // 4 = Pagewood Oval, Litchfield (was 5)
-    // 5 = 16 Avon, Manchester (was 6)
-    // 6 = The 3-Pack (was 3)
+    // ===== Data =====
     const properties = [
       { id: 1, address: "39 Ashland Street, Manchester, NH" },
       { id: 2, address: "108 Church Street, Laconia, NH" },
       { id: 2, address: "112 Church Street, Laconia, NH" },
-
-      // Singles (shifted up)
-      { id: 3, address: "125 N Main St, Rochester, NH 03867" },
-      { id: 4, address: "Pagewood Oval, Litchfield, NH 03052" },
-      { id: 5, address: "16 Avon St, Manchester, NH 03102" },
-
-      // The 3-Pack (now id: 6)
-      { id: 6, address: "447 Manchester St, Manchester, NH" },
-      { id: 6, address: "457 Merrimack St, Manchester, NH" },
-      { id: 6, address: "604 Harvard St, Manchester, NH" }
+      // The 3-Pack
+      { id: 3, address: "447 Manchester St, Manchester, NH" },
+      { id: 3, address: "457 Merrimack St, Manchester, NH" },
+      { id: 3, address: "604 Harvard St, Manchester, NH" },
+      // Singles
+      { id: 4, address: "125 N Main St, Rochester, NH 03867" },
+      { id: 5, address: "Pagewood Oval, Litchfield, NH 03052" },
+      { id: 6, address: "16 Avon St, Manchester, NH 03102" }
     ];
 
-    // Sidebar labels by group
     function labelForGroup(id) {
       if (id === 1) return "39 Ashland Street, Manchester, NH";
       if (id === 2) return "108 & 112 Church Street, Laconia, NH";
-      if (id === 6) return "The 3-Pack"; // moved from id 3 -> 6
+      if (id === 3) return "The 3-Pack (Manchester: 447 Manchester, 457 Merrimack, 604 Harvard)";
       const addrs = properties.filter(p => p.id === id).map(p => p.address);
       return addrs[0] || `Group ${id}`;
     }
@@ -97,7 +88,6 @@ layout: none
       return null;
     }
 
-    // Custom pin
     function createPin() {
       return L.divIcon({
         html: `
@@ -139,11 +129,10 @@ layout: none
         markersById[prop.id].push(marker);
       });
 
-      // Sidebar (sorted by id ascending so numbering matches 1..6)
+      // Sidebar
       const sidebarList = document.querySelector('#sidebar ul');
       sidebarList.innerHTML = '';
-      const uniqueIds = [...new Set(properties.map(p => p.id))].sort((a, b) => a - b);
-
+      const uniqueIds = [...new Set(properties.map(p => p.id))];
       uniqueIds.forEach((id, idx) => {
         if (!markersById[id] || markersById[id].length === 0) return; // hide empty groups
         const li = document.createElement('li');
