@@ -46,26 +46,34 @@ layout: none
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // ===== Data =====
+    // ===== Data (ids updated per your request) =====
+    // 1 = Ashland (static coords)
+    // 2 = 108 & 112 Church, Laconia
+    // 3 = 125 N Main, Rochester (was 4)
+    // 4 = Pagewood Oval, Litchfield (was 5)
+    // 5 = 16 Avon, Manchester (was 6)
+    // 6 = The 3-Pack (was 3)
     const properties = [
       { id: 1, address: "39 Ashland Street, Manchester, NH" },
       { id: 2, address: "108 Church Street, Laconia, NH" },
       { id: 2, address: "112 Church Street, Laconia, NH" },
-      // The 3-Pack (grouped pins; single sidebar label)
-      { id: 3, address: "447 Manchester St, Manchester, NH" },
-      { id: 3, address: "457 Merrimack St, Manchester, NH" },
-      { id: 3, address: "604 Harvard St, Manchester, NH" },
-      // Singles
-      { id: 4, address: "125 N Main St, Rochester, NH 03867" },
-      { id: 5, address: "Pagewood Oval, Litchfield, NH 03052" },
-      { id: 6, address: "16 Avon St, Manchester, NH 03102" }
+
+      // Singles (shifted up)
+      { id: 3, address: "125 N Main St, Rochester, NH 03867" },
+      { id: 4, address: "Pagewood Oval, Litchfield, NH 03052" },
+      { id: 5, address: "16 Avon St, Manchester, NH 03102" },
+
+      // The 3-Pack (now id: 6)
+      { id: 6, address: "447 Manchester St, Manchester, NH" },
+      { id: 6, address: "457 Merrimack St, Manchester, NH" },
+      { id: 6, address: "604 Harvard St, Manchester, NH" }
     ];
 
     // Sidebar labels by group
     function labelForGroup(id) {
       if (id === 1) return "39 Ashland Street, Manchester, NH";
       if (id === 2) return "108 & 112 Church Street, Laconia, NH";
-      if (id === 3) return "The 3-Pack"; // <-- updated per your request
+      if (id === 6) return "The 3-Pack"; // moved from id 3 -> 6
       const addrs = properties.filter(p => p.id === id).map(p => p.address);
       return addrs[0] || `Group ${id}`;
     }
@@ -131,32 +139,29 @@ layout: none
         markersById[prop.id].push(marker);
       });
 
-      // Sidebar
-const sidebarList = document.querySelector('#sidebar ul');
-sidebarList.innerHTML = '';
-let uniqueIds = [...new Set(properties.map(p => p.id))];
+      // Sidebar (sorted by id ascending so numbering matches 1..6)
+      const sidebarList = document.querySelector('#sidebar ul');
+      sidebarList.innerHTML = '';
+      const uniqueIds = [...new Set(properties.map(p => p.id))].sort((a, b) => a - b);
 
-// Move id=3 ("The 3-Pack") to the end
-uniqueIds = uniqueIds.filter(id => id !== 3).concat(3);
-
-uniqueIds.forEach((id, idx) => {
-  if (!markersById[id] || markersById[id].length === 0) return;
-  const li = document.createElement('li');
-  li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
-  li.onclick = () => {
-    const group = markersById[id];
-    if (group.length === 1) {
-      const { lat, lng } = group[0].getLatLng();
-      map.setView([lat, lng], 16);
-      group[0].openTooltip();
-    } else {
-      const fg = L.featureGroup(group);
-      map.fitBounds(fg.getBounds().pad(0.25));
-      group.forEach(m => m.openTooltip());
-    }
-  };
-  sidebarList.appendChild(li);
-});
+      uniqueIds.forEach((id, idx) => {
+        if (!markersById[id] || markersById[id].length === 0) return; // hide empty groups
+        const li = document.createElement('li');
+        li.textContent = `${idx + 1}) ${labelForGroup(id)}`;
+        li.onclick = () => {
+          const group = markersById[id];
+          if (group.length === 1) {
+            const { lat, lng } = group[0].getLatLng();
+            map.setView([lat, lng], 16);
+            group[0].openTooltip();
+          } else {
+            const fg = L.featureGroup(group);
+            map.fitBounds(fg.getBounds().pad(0.25));
+            group.forEach(m => m.openTooltip());
+          }
+        };
+        sidebarList.appendChild(li);
+      });
     }
 
     window.onload = initMap;
