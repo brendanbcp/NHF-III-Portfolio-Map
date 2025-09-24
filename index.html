@@ -1,134 +1,189 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Interactive Fund III Portfolio Map</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
-    body { display: flex; font-family: Arial, sans-serif; }
-    #sidebar {
-      width: 240px;
-      background: #f3f2f1;
-      padding: 16px;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-      overflow-y: auto;
-    }
-    #sidebar h2 { margin-top: 0; color: #022f40; }
-    #sidebar ul { list-style: none; padding: 0; }
-    #sidebar li { margin: 8px 0; cursor: pointer; color: #022f40; }
-    #sidebar li:hover { text-decoration: underline; }
-    #map { flex: 1; height: 100%; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Interactive Fund III Portfolio Map</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+    body { display: flex; font-family: Arial, sans-serif; }
+    #sidebar {
+      width: 260px;
+      background: #f3f2f1;
+      padding: 16px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+    }
+    #sidebar h2 { margin-top: 0; color: #022f40; font-size: 18px; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li { margin: 10px 0; cursor: pointer; color: #022f40; line-height: 1.3; }
+    #sidebar li:hover { text-decoration: underline; }
+    #map { flex: 1; height: 100%; }
+  </style>
 </head>
 <body>
-  <div id="sidebar">
-    <h2>Portfolio Properties</h2>
-    <ul></ul>
-  </div>
-  <div id="map"></div>
+  <div id="sidebar">
+    <h2>Portfolio Properties</h2>
+    <ul></ul>
+  </div>
+  <div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
-    // Property list: id 1 = Ashland, id 2 = both Church Street properties
-    const properties = [
-      { id: 1, address: "39 Ashland Street, Manchester, NH" },
-      { id: 2, address: "108 Church Street, Laconia, NH" },
-      { id: 2, address: "112 Church Street, Laconia, NH" },
-      { id: 3, address: "125 N Main St, Rochester, NH 03867" },
-      { id: 4, address: "Pagewood Oval, Litchfield, NH 03052" },
-      { id: 5, address: "447 Manchester St, Manchester, NH" },
-      { id: 5, address: "457 Merrimack St, Manchester, NH" },
-      { id: 5, address: "604 Harvard St, Manchester, NH" },
-      { id: 6, address: "16 Avon St, Manchester, NH 03102"}
-    ];
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // ===== Data =====
+    // Use groupId to group multiple addresses under one sidebar entry.
+    // groupLabel is what shows in the sidebar for that group.
+    const properties = [
+      // Group 1: Ashland (static coords for precision)
+      {
+        groupId: 1,
+        address: "39 Ashland Street, Manchester, NH",
+        coords: [42.992576, -71.448404],
+        groupLabel: "39 Ashland Street, Manchester, NH"
+      },
 
-    // Simple Nominatim geocoder
-    async function geocode(query) {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data && data.length) {
-        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-      }
-      return null;
-    }
+      // Group 2: Church Street (two addresses, one entry)
+      {
+        groupId: 2,
+        address: "108 Church Street, Laconia, NH",
+        groupLabel: "108 & 112 Church Street, Laconia, NH"
+      },
+      {
+        groupId: 2,
+        address: "112 Church Street, Laconia, NH",
+        groupLabel: "108 & 112 Church Street, Laconia, NH"
+      },
 
-    // Create custom pin icon
-    function createPin() {
-      return L.divIcon({
-        html: `
-          <svg width="30" height="45" viewBox="0 0 512 512">
-            <path d="M256 0C167.6 0 96 71.6 96 160c0 139.1 160 352 160 352s160-212.9 160-352C416 71.6 344.4 0 256 0z"
-              fill="#00aBe6" stroke="#022f40" stroke-width="20" />
-            <circle cx="256" cy="160" r="60" fill="#f3f2f1" />
-          </svg>
-        `,
-        className: '',
-        iconSize: [30, 45],
-        iconAnchor: [15, 45]
-      });
-    }
+      // === New additions ===
+      // 3) 125 N Main St, Rochester, NH
+      {
+        groupId: 3,
+        address: "125 N Main St, Rochester, NH 03867",
+        groupLabel: "125 N Main St, Rochester, NH"
+      },
 
-    async function initMap() {
-      const map = L.map('map').setView([43.27, -71.45], 9);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map);
+      // 4) Pagewood Oval, Litchfield, NH
+      {
+        groupId: 4,
+        address: "Pagewood Oval, Litchfield, NH 03052",
+        groupLabel: "Pagewood Oval, Litchfield, NH"
+      },
 
-      const pinIcon = createPin();
-      const markersById = {};
+      // 5) 16 Avon St, Manchester, NH
+      {
+        groupId: 5,
+        address: "16 Avon St, Manchester, NH 03102",
+        groupLabel: "16 Avon St, Manchester, NH"
+      },
 
-      // Geocode and add markers, using static coords for Ashland
-      for (const prop of properties) {
-        let coords;
-        if (prop.id === 1) {
-          // Static coordinates for precise placement
-          coords = [42.992576, -71.448404];
-        } else {
-          coords = await geocode(prop.address);
-        }
-        if (!coords) continue;
+      // 6) Grouped: 447 Manchester St, 457 Merrimack St, 604 Harvard St (all Manchester)
+      {
+        groupId: 6,
+        address: "447 Manchester St, Manchester, NH",
+        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
+      },
+      {
+        groupId: 6,
+        address: "457 Merrimack St, Manchester, NH",
+        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
+      },
+      {
+        groupId: 6,
+        address: "604 Harvard St, Manchester, NH",
+        groupLabel: "447 Manchester St, 457 Merrimack St & 604 Harvard St, Manchester, NH"
+      }
+    ];
 
-        const marker = L.marker(coords, { icon: pinIcon }).addTo(map)
-          .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
+    // ===== Geocoder =====
+    async function geocode(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await res.json();
+      if (Array.isArray(data) && data.length) {
+        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      }
+      return null;
+    }
 
-        // Group markers by ID
-        if (!markersById[prop.id]) markersById[prop.id] = [];
-        markersById[prop.id].push(marker);
-      }
+    // ===== Custom Pin =====
+    function createPin() {
+      return L.divIcon({
+        html: `
+          <svg width="30" height="45" viewBox="0 0 512 512" aria-hidden="true">
+            <path d="M256 0C167.6 0 96 71.6 96 160c0 139.1 160 352 160 352s160-212.9 160-352C416 71.6 344.4 0 256 0z"
+              fill="#00aBe6" stroke="#022f40" stroke-width="20" />
+            <circle cx="256" cy="160" r="60" fill="#f3f2f1" />
+          </svg>
+        `,
+        className: '',
+        iconSize: [30, 45],
+        iconAnchor: [15, 45]
+      });
+    }
 
-      // Build sidebar entries
-      const sidebarList = document.querySelector('#sidebar ul');
-      const uniqueIds = [...new Set(properties.map(p => p.id))];
-      uniqueIds.forEach(id => {
-        const li = document.createElement('li');
-        if (id === 1) {
-          li.textContent = `1) 39 Ashland Street, Manchester, NH`;
-        } else if (id === 2) {
-          li.textContent = `2) 108 & 112 Church Street, Laconia, NH`;
-        } else if (id === 3) {
-          li.textContent = `3) 125 N Main St, Rochester, NH`;
-        } else if (id === 4) {
-          li.textContent = `4) Pagewood Oval, Litchfield, NH`;
-        } else if (id === 5) {
-          li.textContent = `5) 447 Manchester St, 457 Merrimack St, 604 Harvard St, Manchester, NH`;
-        } else if (id === 6) {
-          li.textContent = `6) 16 Avon St, Manchester, NH`;
-        }
-        li.onclick = () => {
-          const group = markersById[id];
-          const lat = group.reduce((sum, m) => sum + m.getLatLng().lat, 0) / group.length;
-          const lon = group.reduce((sum, m) => sum + m.getLatLng().lng, 0) / group.length;
-          map.setView([lat, lon], 15);
-          group.forEach(m => m.openTooltip());
-        };
-        sidebarList.appendChild(li);
-      });
-    }
+    // ===== Init Map =====
+    async function initMap() {
+      const map = L.map('map').setView([43.27, -71.45], 9);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
 
-    window.onload = initMap;
-  </script>
+      const pinIcon = createPin();
+      const markersByGroup = {};
+
+      // Geocode and add markers
+      for (const prop of properties) {
+        let coords = prop.coords || await geocode(prop.address);
+        if (!coords) continue;
+
+        const marker = L
+          .marker(coords, { icon: pinIcon })
+          .addTo(map)
+          .bindTooltip(prop.address, { direction: 'top', offset: [0, -30], opacity: 0.9 });
+
+        if (!markersByGroup[prop.groupId]) markersByGroup[prop.groupId] = [];
+        markersByGroup[prop.groupId].push(marker);
+      }
+
+      // Build sidebar
+      const sidebarList = document.querySelector('#sidebar ul');
+      sidebarList.innerHTML = '';
+
+      // Unique groups in ascending groupId order
+      const groups = [...new Set(properties.map(p => p.groupId))].sort((a, b) => a - b);
+
+      groups.forEach((groupId, idx) => {
+        // Use the first property's label for the group
+        const example = properties.find(p => p.groupId === groupId);
+        const label = example?.groupLabel || `Group ${groupId}`;
+
+        const li = document.createElement('li');
+        li.textContent = `${idx + 1}) ${label}`;
+
+        li.onclick = () => {
+          const group = markersByGroup[groupId];
+          if (!group || !group.length) return;
+
+          if (group.length === 1) {
+            const { lat, lng } = group[0].getLatLng();
+            map.setView([lat, lng], 16);
+            group[0].openTooltip();
+          } else {
+            // Fit to group bounds if multiple markers
+            const fg = L.featureGroup(group);
+            map.fitBounds(fg.getBounds().pad(0.25));
+            group.forEach(m => m.openTooltip());
+          }
+        };
+
+        sidebarList.appendChild(li);
+      });
+    }
+
+    window.onload = initMap;
+  </script>
 </body>
 </html>
